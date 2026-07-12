@@ -267,8 +267,11 @@ body {
 }
 
 /* Map Card Specific */
+.map-card-full {
+    width: 100%;
+}
 .map-body {
-    height: 500px;
+    height: clamp(460px, 65vh, 760px);
     padding: 0;
     background-color: #090c13;
 }
@@ -364,6 +367,18 @@ body {
     gap: 15px;
     margin-bottom: 15px;
     flex-wrap: wrap;
+    align-items: center;
+}
+/* La recherche texte occupe sa propre ligne, les menus se répartissent en dessous */
+.search-input-group {
+    flex: 1 1 100%;
+}
+.search-filters .select-group {
+    flex: 1 1 160px;
+}
+.search-filters .select-group select {
+    width: 100%;
+    min-width: 0;
 }
 
 .input-group {

@@ -4,9 +4,12 @@
 
 // Global state
 const state = {
-    level: null,          // 'region' or 'department'
-    code: null,           // code from map
-    name: null,           // name of region/department
+    // Filtres géographiques cascadants (région → département → commune)
+    geo: {
+        region:  { code: '', name: '' }, // code_region (numérique, ex "84")
+        dept:    { code: '', name: '' }, // code_departement au format API (3 car., ex "007")
+        commune: { code: '', name: '' }  // code_commune INSEE (5 car., ex "07216")
+    },
     query: '',            // search bar query
     yearFilter: '',       // select year filter
     nature: '',           // select school type filter
@@ -37,11 +40,15 @@ function getApiDeptCode(code) {
 function buildWhereClause() {
     let clauses = [];
 
-    // Geographic filter
-    if (state.level === 'region' && state.code) {
-        clauses.push(`code_region="${state.code}"`);
-    } else if (state.level === 'department' && state.code) {
-        clauses.push(`code_departement="${getApiDeptCode(state.code)}"`);
+    // Filtres géographiques (cumulatifs : région, département, commune)
+    if (state.geo.region.code) {
+        clauses.push(`code_region="${state.geo.region.code}"`);
+    }
+    if (state.geo.dept.code) {
+        clauses.push(`code_departement="${state.geo.dept.code}"`);
+    }
+    if (state.geo.commune.code) {
+        clauses.push(`code_commune="${state.geo.commune.code}"`);
     }
 
     // Year filter
@@ -316,18 +323,18 @@ async function fetchGeoRankings(where) {
         let url = '';
         let targetLevel = '';
 
-        if (state.level === 'department') {
-            // Filtered by department: show top closed school communes in this department
+        if (state.geo.dept.code) {
+            // Un département est filtré : communes les plus touchées
             titleElement.innerHTML = '<i class="fa-solid fa-list-ol"></i> Communes les plus touchées';
             url = `${API_BASE}?group_by=libelle_commune,code_commune&select=libelle_commune,code_commune,count(numero_uai)%20as%20total&order_by=total%20desc&limit=10`;
             targetLevel = 'commune';
-        } else if (state.level === 'region') {
-            // Filtered by region: show top closed school departments in this region
+        } else if (state.geo.region.code) {
+            // Une région est filtrée : départements les plus touchés
             titleElement.innerHTML = '<i class="fa-solid fa-list-ol"></i> Départements les plus touchés';
             url = `${API_BASE}?group_by=libelle_departement,code_departement&select=libelle_departement,code_departement,count(numero_uai)%20as%20total&order_by=total%20desc&limit=10`;
             targetLevel = 'department';
         } else {
-            // No filter: show top departments in France
+            // Aucun filtre : top départements de France
             titleElement.innerHTML = '<i class="fa-solid fa-list-ol"></i> Top Départements Touchés';
             url = `${API_BASE}?group_by=libelle_departement,code_departement&select=libelle_departement,code_departement,count(numero_uai)%20as%20total&order_by=total%20desc&limit=10`;
             targetLevel = 'department';
@@ -364,17 +371,19 @@ async function fetchGeoRankings(where) {
                     <span class="rank-badge">${total} fermetures</span>
                 `;
 
-                // Add click event to filter by department when clicking in list
+                // Clic sur un élément du classement → applique le filtre correspondant
                 if (targetLevel === 'department') {
                     li.addEventListener('click', () => {
-                        // GeoJSON codes from list item, e.g. "07" from API "007"
+                        // code API "007" → code carte "07"
                         let cleanCode = code;
                         if (code.length === 3 && code.startsWith('0')) {
                             cleanCode = code.substring(1);
                         }
-                        
-                        // Set state and filter
-                        selectGeographicArea('department', cleanCode, name);
+                        selectDepartmentFromMap(cleanCode, name);
+                    });
+                } else if (targetLevel === 'commune') {
+                    li.addEventListener('click', () => {
+                        selectCommune(code, name);
                     });
                 }
                 
@@ -536,15 +545,24 @@ async function updateDashboard(statsOnly = false) {
         await fetchSchoolsTable(where);
     }
     
-    // Update active filter badge UI
+    // Badge de filtre actif (niveau géographique le plus fin sélectionné)
     const badge = document.getElementById('active-filter-container');
     const badgeName = document.getElementById('active-filter-name');
     const searchSubtitle = document.getElementById('search-subtitle');
-    
-    if (state.name) {
-        badgeName.textContent = `${state.level === 'region' ? 'Région' : 'Dépt.'} : ${state.name}`;
+
+    let activeGeoLabel = '';
+    if (state.geo.commune.code) {
+        activeGeoLabel = `Commune : ${state.geo.commune.name}`;
+    } else if (state.geo.dept.code) {
+        activeGeoLabel = `Dépt. : ${state.geo.dept.name}`;
+    } else if (state.geo.region.code) {
+        activeGeoLabel = `Région : ${state.geo.region.name}`;
+    }
+
+    if (activeGeoLabel) {
+        badgeName.textContent = activeGeoLabel;
         badge.style.display = 'flex';
-        searchSubtitle.innerHTML = `Affichage des résultats pour : <strong>${state.name}</strong>`;
+        searchSubtitle.innerHTML = `Affichage des résultats pour : <strong>${activeGeoLabel}</strong>`;
     } else {
         badge.style.display = 'none';
         searchSubtitle.textContent = "Recherche dans la France entière";
@@ -553,34 +571,185 @@ async function updateDashboard(statsOnly = false) {
     showLoader(false);
 }
 
-// Select a region or department filter (called from map click or list click)
-function selectGeographicArea(level, code, name) {
-    state.level = level;
-    state.code = code;
-    state.name = name;
-    state.page = 1; // reset pagination
+/* ---------------------------------------------------------------------------
+   Filtres géographiques cascadants : Région → Département → Commune
+   --------------------------------------------------------------------------- */
+
+// Remplit un <select> avec des options {value, label, name}
+function populateSelect(selectEl, items, placeholder) {
+    selectEl.innerHTML = '';
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = placeholder;
+    selectEl.appendChild(ph);
+    items.forEach(it => {
+        const opt = document.createElement('option');
+        opt.value = it.value;
+        opt.textContent = it.label;
+        if (it.name) opt.dataset.name = it.name;
+        selectEl.appendChild(opt);
+    });
+}
+
+// Charge la liste des régions (au démarrage)
+async function loadRegions() {
+    const selectEl = document.getElementById('filter-region');
+    try {
+        const url = `${API_BASE}?select=code_region,libelle_region,count(numero_uai)%20as%20total&group_by=code_region,libelle_region&order_by=libelle_region%20asc&limit=100`;
+        const data = await (await fetch(url)).json();
+        const items = (data.results || [])
+            .filter(r => r.code_region != null && r.libelle_region)
+            .map(r => ({ value: String(r.code_region), name: r.libelle_region, label: `${r.libelle_region} (${r.total})` }));
+        populateSelect(selectEl, items, 'Toutes les régions');
+    } catch (e) {
+        console.error('Erreur chargement régions:', e);
+    }
+}
+
+// Charge les départements (filtrés par région si fournie)
+async function loadDepartements(regionCode) {
+    const selectEl = document.getElementById('filter-departement');
+    try {
+        let url = `${API_BASE}?select=code_departement,libelle_departement,count(numero_uai)%20as%20total&group_by=code_departement,libelle_departement&order_by=libelle_departement%20asc&limit=200`;
+        if (regionCode) url += `&where=${encodeURIComponent(`code_region="${regionCode}"`)}`;
+        const data = await (await fetch(url)).json();
+        const items = (data.results || [])
+            .filter(d => d.code_departement != null && d.libelle_departement)
+            .map(d => ({ value: String(d.code_departement), name: d.libelle_departement, label: `${d.libelle_departement} (${d.total})` }));
+        populateSelect(selectEl, items, 'Tous les départements');
+    } catch (e) {
+        console.error('Erreur chargement départements:', e);
+    }
+}
+
+// Charge les communes du département fourni
+async function loadCommunes(deptCode) {
+    const selectEl = document.getElementById('filter-commune');
+    if (!deptCode) {
+        populateSelect(selectEl, [], "Choisir un département d'abord");
+        selectEl.disabled = true;
+        return;
+    }
+    try {
+        const where = encodeURIComponent(`code_departement="${deptCode}"`);
+        const url = `${API_BASE}?select=code_commune,libelle_commune,count(numero_uai)%20as%20total&group_by=code_commune,libelle_commune&where=${where}&order_by=libelle_commune%20asc&limit=1000`;
+        const data = await (await fetch(url)).json();
+        const items = (data.results || [])
+            .filter(c => c.code_commune != null && c.libelle_commune)
+            .map(c => ({ value: String(c.code_commune), name: c.libelle_commune, label: `${c.libelle_commune} (${c.total})` }));
+        populateSelect(selectEl, items, 'Toutes les communes');
+        selectEl.disabled = false;
+    } catch (e) {
+        console.error('Erreur chargement communes:', e);
+    }
+}
+
+// --- Sélection depuis les menus déroulants ---
+
+async function onRegionChange(code, name) {
+    state.geo.region = { code, name };
+    state.geo.dept = { code: '', name: '' };
+    state.geo.commune = { code: '', name: '' };
+    state.page = 1;
+    await loadDepartements(code);
+    await loadCommunes('');           // réinitialise + désactive les communes
+    document.getElementById('filter-departement').value = '';
     updateDashboard();
 }
 
-// Reset all search parameters and map zoom
-function resetAllFilters() {
-    state.level = null;
-    state.code = null;
-    state.name = null;
+async function onDeptChange(code, name) {
+    state.geo.dept = { code, name };
+    state.geo.commune = { code: '', name: '' };
+    state.page = 1;
+    await loadCommunes(code);
+    document.getElementById('filter-commune').value = '';
+    updateDashboard();
+}
+
+function selectCommune(code, name) {
+    state.geo.commune = { code, name };
+    state.page = 1;
+    document.getElementById('filter-commune').value = code;
+    updateDashboard();
+}
+
+// Réinitialise uniquement les filtres géographiques (badge / clic sur la croix)
+async function clearGeoFilters() {
+    state.geo.region = { code: '', name: '' };
+    state.geo.dept = { code: '', name: '' };
+    state.geo.commune = { code: '', name: '' };
+    state.page = 1;
+    document.getElementById('filter-region').value = '';
+    document.getElementById('filter-departement').value = '';
+    await loadDepartements('');
+    await loadCommunes('');
+    resetMap();
+    updateDashboard();
+}
+
+// --- Sélection depuis la carte / le classement ---
+
+// Région cliquée sur la carte (code GeoJSON == code_region)
+async function selectRegionFromMap(code, name) {
+    document.getElementById('filter-region').value = String(code);
+    await onRegionChange(String(code), name);
+}
+
+// Département cliqué sur la carte / le classement (code carte 2 car., ex "07")
+async function selectDepartmentFromMap(geoCode, name) {
+    const apiCode = getApiDeptCode(String(geoCode));
+
+    // Retrouve la région parente pour positionner correctement les menus
+    let region = { code: '', name: '' };
+    try {
+        const where = encodeURIComponent(`code_departement="${apiCode}"`);
+        const url = `${API_BASE}?select=code_region,libelle_region&group_by=code_region,libelle_region&where=${where}&limit=1`;
+        const data = await (await fetch(url)).json();
+        if (data.results && data.results.length > 0 && data.results[0].code_region != null) {
+            region = { code: String(data.results[0].code_region), name: data.results[0].libelle_region };
+        }
+    } catch (e) {
+        console.error('Erreur région parente:', e);
+    }
+
+    state.geo.region = region;
+    state.geo.dept = { code: apiCode, name };
+    state.geo.commune = { code: '', name: '' };
+    state.page = 1;
+
+    // Synchronise les menus déroulants
+    document.getElementById('filter-region').value = region.code;
+    await loadDepartements(region.code);
+    document.getElementById('filter-departement').value = apiCode;
+    await loadCommunes(apiCode);
+    document.getElementById('filter-commune').value = '';
+
+    updateDashboard();
+}
+
+// Réinitialise tous les filtres et le zoom de la carte
+async function resetAllFilters() {
+    state.geo.region = { code: '', name: '' };
+    state.geo.dept = { code: '', name: '' };
+    state.geo.commune = { code: '', name: '' };
     state.query = '';
     state.yearFilter = '';
     state.nature = '';
     state.page = 1;
-    
-    // Clear inputs in DOM
+
+    // Réinitialise les champs du DOM
     document.getElementById('search-query').value = '';
     document.getElementById('filter-year').value = '';
     document.getElementById('filter-nature').value = '';
-    
-    // Signal map to reset zoom
+    document.getElementById('filter-region').value = '';
+    document.getElementById('filter-departement').value = '';
+    await loadDepartements('');   // recharge tous les départements
+    await loadCommunes('');       // réinitialise + désactive les communes
+
+    // Réinitialise le zoom de la carte
     resetMap();
-    
-    // Reload dashboard
+
+    // Recharge le tableau de bord
     updateDashboard();
 }
 
@@ -592,12 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Event listeners for UI controls
     document.getElementById('btn-reset-all').addEventListener('click', resetAllFilters);
     document.getElementById('btn-clear-filter-badge').addEventListener('click', () => {
-        state.level = null;
-        state.code = null;
-        state.name = null;
-        state.page = 1;
-        resetMap();
-        updateDashboard();
+        clearGeoFilters();
     });
     
     // Text search debouncing/triggers
@@ -624,7 +788,21 @@ document.addEventListener('DOMContentLoaded', () => {
         state.page = 1;
         updateDashboard();
     });
-    
+
+    // Filtres géographiques cascadants
+    document.getElementById('filter-region').addEventListener('change', (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        onRegionChange(e.target.value, e.target.value ? (opt.dataset.name || opt.text) : '');
+    });
+    document.getElementById('filter-departement').addEventListener('change', (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        onDeptChange(e.target.value, e.target.value ? (opt.dataset.name || opt.text) : '');
+    });
+    document.getElementById('filter-commune').addEventListener('change', (e) => {
+        const opt = e.target.options[e.target.selectedIndex];
+        selectCommune(e.target.value, e.target.value ? (opt.dataset.name || opt.text) : '');
+    });
+
     // Pagination buttons
     document.getElementById('btn-prev').addEventListener('click', () => {
         if (state.page > 1) {
@@ -642,10 +820,16 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'SELECT_AREA') {
             const data = event.data;
-            selectGeographicArea(data.level, data.code, data.name);
+            if (data.level === 'region') {
+                selectRegionFromMap(data.code, data.name);
+            } else if (data.level === 'department') {
+                selectDepartmentFromMap(data.code, data.name);
+            }
         }
     });
-    
-    // 4. Initial load of the dashboard
+
+    // 4. Chargement initial : régions + départements + tableau de bord
+    loadRegions();
+    loadDepartements('');
     updateDashboard();
 });

@@ -50,25 +50,25 @@
             </div>
         </header>
 
+        <!-- MAP: espace dédié pleine largeur -->
+        <div class="card map-card map-card-full">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i class="fa-solid fa-map-location-dot"></i> Carte Interactive de France
+                </h2>
+                <span class="card-subtitle">Cliquez sur une région ou un département pour filtrer — ou utilisez les filtres ci-dessous</span>
+            </div>
+            <div class="card-body map-body">
+                <!-- Python-generated map iframe -->
+                <iframe id="map-frame" src="map.html" title="Carte Folium Établissements Fermés"></iframe>
+            </div>
+        </div>
+
         <!-- DASHBOARD GRID -->
         <main class="dashboard-grid">
-            
-            <!-- LEFT COLUMN: Map and Search List -->
-            <section class="left-column">
-                <!-- Map Container Card -->
-                <div class="card map-card">
-                    <div class="card-header">
-                        <h2 class="card-title">
-                            <i class="fa-solid fa-map-location-dot"></i> Carte Interactive de France
-                        </h2>
-                        <span class="card-subtitle">Cliquez sur une région ou un département pour filtrer</span>
-                    </div>
-                    <div class="card-body map-body">
-                        <!-- Python-generated map iframe -->
-                        <iframe id="map-frame" src="map.html" title="Carte Folium Établissements Fermés"></iframe>
-                    </div>
-                </div>
 
+            <!-- LEFT COLUMN: Search List -->
+            <section class="left-column">
                 <!-- Search & Directory Card -->
                 <div class="card search-card">
                     <div class="card-header">
@@ -83,6 +83,21 @@
                             <div class="input-group search-input-group">
                                 <i class="fa-solid fa-search input-icon"></i>
                                 <input type="text" id="search-query" placeholder="Rechercher par nom, commune, UAI...">
+                            </div>
+                            <div class="select-group">
+                                <select id="filter-region">
+                                    <option value="">Toutes les régions</option>
+                                </select>
+                            </div>
+                            <div class="select-group">
+                                <select id="filter-departement">
+                                    <option value="">Tous les départements</option>
+                                </select>
+                            </div>
+                            <div class="select-group">
+                                <select id="filter-commune" disabled>
+                                    <option value="">Choisir un département d'abord</option>
+                                </select>
                             </div>
                             <div class="select-group">
                                 <select id="filter-year">
