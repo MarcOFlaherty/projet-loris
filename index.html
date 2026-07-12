@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observatoire des Établissements Scolaires Fermés - France</title>
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom stylesheet -->
+    <link rel="stylesheet" href="index.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- App Loader -->
+    <div id="app-loader" class="loader-overlay">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p>Chargement de l'observatoire...</p>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-logo-title">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div class="title-meta">
+                    <h1>Observatoire des Fermetures d'Établissements Scolaires</h1>
+                    <p>Analyse cartographique et statistique des écoles fermées en France (Base DEPP - Depuis 1978)</p>
+                </div>
+            </div>
+            <div class="header-controls">
+                <div class="active-filter-badge" id="active-filter-container" style="display: none;">
+                    <span class="badge-label">Filtre actif :</span>
+                    <span class="badge-value" id="active-filter-name">-</span>
+                    <button class="clear-badge-btn" id="btn-clear-filter-badge" title="Réinitialiser les filtres">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <button class="btn btn-primary" id="btn-reset-all">
+                    <i class="fa-solid fa-rotate-left"></i> Réinitialiser la vue
+                </button>
+            </div>
+        </header>
+
+        <!-- DASHBOARD GRID -->
+        <main class="dashboard-grid">
+            
+            <!-- LEFT COLUMN: Map and Search List -->
+            <section class="left-column">
+                <!-- Map Container Card -->
+                <div class="card map-card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <i class="fa-solid fa-map-location-dot"></i> Carte Interactive de France
+                        </h2>
+                        <span class="card-subtitle">Cliquez sur une région ou un département pour filtrer</span>
+                    </div>
+                    <div class="card-body map-body">
+                        <!-- Python-generated map iframe -->
+                        <iframe id="map-frame" src="map.html" title="Carte Folium Établissements Fermés"></iframe>
+                    </div>
+                </div>
+
+                <!-- Search & Directory Card -->
+                <div class="card search-card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <i class="fa-solid fa-magnifying-glass"></i> Annuaire des Établissements Fermés
+                        </h2>
+                        <span class="card-subtitle" id="search-subtitle">Recherche dans la zone courante</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Filters form -->
+                        <div class="search-filters">
+                            <div class="input-group search-input-group">
+                                <i class="fa-solid fa-search input-icon"></i>
+                                <input type="text" id="search-query" placeholder="Rechercher par nom, commune, UAI...">
+                            </div>
+                            <div class="select-group">
+                                <select id="filter-year">
+                                    <option value="">Toutes les années</option>
+                                    <option value="recent">Récentes (Depuis 2020)</option>
+                                    <option value="2010s">Années 2010 (2010-2019)</option>
+                                    <option value="2000s">Années 2000 (2000-2009)</option>
+                                    <option value="1990s">Années 1990 (1990-1999)</option>
+                                    <option value="old">Anciennes (Avant 1990)</option>
+                                </select>
+                            </div>
+                            <div class="select-group">
+                                <select id="filter-nature">
+                                    <option value="">Tous les Types</option>
+                                    <option value="ECOLE MATERNELLE">Maternelle</option>
+                                    <option value="ECOLE DE NIVEAU ELEMENTAIRE">Élémentaire</option>
+                                    <option value="COLLEGE">Collège</option>
+                                    <option value="LYCEE">Lycée</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Data table container -->
+                        <div class="table-container">
+                            <table id="schools-table">
+                                <thead>
+                                    <tr>
+                                        <th>UAI</th>
+                                        <th>Appellation / Nom</th>
+                                        <th>Commune</th>
+                                        <th>Type</th>
+                                        <th>Années</th>
+                                        <th>Secteur</th>
+                                        <th class="actions-col">Carte</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="schools-table-body">
+                                    <!-- Dynamic rows -->
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">Chargement des données...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <div class="pagination-container">
+                            <div class="pagination-info" id="pagination-info">
+                                Affichage de 0 à 0 sur 0 établissements
+                            </div>
+                            <div class="pagination-buttons">
+                                <button class="btn btn-secondary btn-sm" id="btn-prev" disabled>
+                                    <i class="fa-solid fa-chevron-left"></i> Précédent
+                                </button>
+                                <button class="btn btn-secondary btn-sm" id="btn-next" disabled>
+                                    Suivant <i class="fa-solid fa-chevron-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN: Stats Charts & KPIs -->
+            <section class="right-column">
+                
+                <!-- KPI Cards Sub-grid -->
+                <div class="kpi-grid">
+                    <!-- KPI 1 -->
+                    <div class="kpi-card card">
+                        <div class="kpi-icon color-indigo">
+                            <i class="fa-solid fa-school-flag"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3 id="kpi-total">-</h3>
+                            <p>Établissements fermés</p>
+                        </div>
+                    </div>
+                    <!-- KPI 2 -->
+                    <div class="kpi-card card">
+                        <div class="kpi-icon color-pink">
+                            <i class="fa-solid fa-child"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3 id="kpi-primary">-</h3>
+                            <p>Maternelles & Élémentaires</p>
+                        </div>
+                    </div>
+                    <!-- KPI 3 -->
+                    <div class="kpi-card card">
+                        <div class="kpi-icon color-cyan">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <h3 id="kpi-secondary">-</h3>
+                            <p>Collèges & Lycées</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart 1: Time evolution -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <i class="fa-solid fa-chart-line"></i> Évolution des Fermetures par Année
+                        </h2>
+                    </div>
+                    <div class="card-body chart-body">
+                        <canvas id="chart-evolution"></canvas>
+                    </div>
+                </div>
+
+                <!-- Sub-grid of charts -->
+                <div class="charts-subgrid">
+                    <!-- Chart 2: Nature distribution -->
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <i class="fa-solid fa-chart-bar"></i> Principaux Types Fermés
+                            </h2>
+                        </div>
+                        <div class="card-body chart-body">
+                            <canvas id="chart-nature"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 3: Degré breakdown donut -->
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h2 class="card-title">
+                                <i class="fa-solid fa-chart-pie"></i> Structure par Degré
+                            </h2>
+                        </div>
+                        <div class="card-body chart-body donut-body">
+                            <canvas id="chart-sector"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Geographic summary list -->
+                <div class="card geo-summary-card">
+                    <div class="card-header">
+                        <h2 class="card-title" id="geo-summary-title">
+                            <i class="fa-solid fa-list-ol"></i> Top Départements Touchés
+                        </h2>
+                    </div>
+                    <div class="card-body pad-zero">
+                        <ul class="geo-rankings-list" id="geo-rankings-list">
+                            <!-- Dynamic list items -->
+                            <li class="ranking-placeholder">Chargement du classement...</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </section>
+
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="app-footer">
+            <p>Données publiques fournies par le Ministère de l'Éducation Nationale - Dataset ID : <code>fr-en-etablissements-fermes</code></p>
+            <p>Développé avec <i class="fa-solid fa-heart text-rose"></i> et disponible sur GitHub Pages.</p>
+        </footer>
+    </div>
+
+    <!-- Custom logic script -->
+    <script src="app.js"></script>
+</body>
+</html>
